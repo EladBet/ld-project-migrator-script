@@ -1,0 +1,6 @@
+{
+    "tasks": {
+        "import": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors source.ts",
+        "migrate": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors migrate.ts"
+  }
+}
