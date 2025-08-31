@@ -102,7 +102,7 @@ const pageSize : number = 5;
 let offset: number = 0;
 let moreFlags : boolean = true;
 const flags : string[] = [];
-let path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}`;
+let path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}&filter=state:live`;
 
 while (moreFlags) {
 
@@ -131,7 +131,7 @@ while (moreFlags) {
 
   if (flagsData._links.next) {
     offset += pageSize;
-    path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}`;
+    path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}&filter=state:live`;
   } else {
     moreFlags = false;
   }
