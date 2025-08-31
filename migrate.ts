@@ -89,7 +89,8 @@ for (const env of projRep.environments.items) {
     `./source/project/${inputArgs.projKeySource}/segment-${env.key}.json`,
   );
   
-  // We are ignoring big segments/synced segments for now
+  // PHASE 1: Create all segments first (without rules)
+  console.log(`Phase 1: Creating segments for environment ${env.key}`);
   for (const segment of segmentData.items) {
     if (segment.unbounded == true) {
       console.log(Colors.yellow(
@@ -125,6 +126,14 @@ for (const env of projRep.environments.items) {
     if (segmentStatus > 201) {
       console.log(JSON.stringify(newSegment));
     }
+  }
+
+  // PHASE 2: Now patch all segments with rules (all segments exist now)
+  console.log(`Phase 2: Patching segments with rules for environment ${env.key}`);
+  for (const segment of segmentData.items) {
+    if (segment.unbounded == true) {
+      continue; // Skip unbounded segments
+    }
 
     // Build Segment Patches //
     const sgmtPatches = [];
@@ -145,7 +154,7 @@ for (const env of projRep.environments.items) {
       ldAPIPatchRequest(
         inputArgs.apikey,
         inputArgs.domain,
-        `segments/${inputArgs.projKeyDest}/${env.key}/${newSegment.key}`,
+        `segments/${inputArgs.projKeyDest}/${env.key}/${segment.key}`,
         sgmtPatches,
       ),
     );
@@ -153,9 +162,9 @@ for (const env of projRep.environments.items) {
     const segPatchStatus = patchRules.statusText;
     consoleLogger(
       patchRules.status,
-      `Patching segment ${newSegment.key} status: ${segPatchStatus}`,
+      `Patching segment ${segment.key} status: ${segPatchStatus}`,
     );
-  };
+  }
 };
 
 // Flag Data //

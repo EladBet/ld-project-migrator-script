@@ -5,3 +5,5 @@ property-analysis.md
 differences-summary.md
 detailed-differences.json
 comparison-results.json
+migrate-default.sh
+property-analysis first migration.md
