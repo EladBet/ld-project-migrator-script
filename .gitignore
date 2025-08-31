@@ -1,3 +1,7 @@
 source/*
 .env
 .vscode/launch.json
+property-analysis.md
+differences-summary.md
+detailed-differences.json
+comparison-results.json

@@ -1,6 +1,8 @@
 {
     "tasks": {
         "import": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors source.ts",
-        "migrate": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors migrate.ts"
-  }
+        "migrate": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors migrate.ts",
+        "compare": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors compare-bulk-json.ts",
+        "analyze": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors analyze-differences.ts"
+    }
 }
