@@ -24,7 +24,7 @@ interface PropertySummary {
 async function analyzeDifferences() {
   try {
     // Read the detailed differences file
-    const data = JSON.parse(await Deno.readTextFile("detailed-differences.json")) as DetailedDifference[];
+    const data = JSON.parse(await Deno.readTextFile("results/detailed-differences.json")) as DetailedDifference[];
     
     // Group differences by property path
     const pathCounts = new Map<string, PropertySummary>();
@@ -105,19 +105,21 @@ async function analyzeDifferences() {
       reportLines.push("");
     });
     
-    await Deno.writeTextFile("property-analysis.md", reportLines.join('\n'));
-    console.log(Colors.green("Detailed analysis saved to property-analysis.md"));
+    await Deno.writeTextFile("results/property-analysis.md", reportLines.join('\n'));
+    console.log(Colors.green("Detailed analysis saved to results/property-analysis.md"));
     
     // Generate CSV for spreadsheet analysis
     const csvLines = ["Property Path,Count,Percentage,Example File,Default Value,Migration Value"];
     sortedPaths.forEach(summary => {
       const percentage = ((summary.count / data.length) * 100).toFixed(1);
       const example = summary.examples[0];
-      csvLines.push(`"${summary.path}",${summary.count},${percentage}%,"${example.file}","${JSON.stringify(example.value1).replace(/"/g, '""')}","${JSON.stringify(example.value2).replace(/"/g, '""')}"`);
+      const value1Str = JSON.stringify(example.value1) || "undefined";
+      const value2Str = JSON.stringify(example.value2) || "undefined";
+      csvLines.push(`"${summary.path}",${summary.count},${percentage}%,"${example.file}","${value1Str.replace(/"/g, '""')}","${value2Str.replace(/"/g, '""')}"`);
     });
     
-    await Deno.writeTextFile("property-analysis.csv", csvLines.join('\n'));
-    console.log(Colors.green("CSV analysis saved to property-analysis.csv"));
+    await Deno.writeTextFile("results/property-analysis.csv", csvLines.join('\n'));
+    console.log(Colors.green("CSV analysis saved to results/property-analysis.csv"));
     
   } catch (error) {
     console.error(Colors.red("Error analyzing differences:"), error);

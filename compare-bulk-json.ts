@@ -270,18 +270,18 @@ if (import.meta.main) {
   
   // Save basic results to file
   await Deno.writeTextFile(
-    "comparison-results.json", 
+    "results/comparison-results.json", 
     JSON.stringify(results, null, 2)
   );
-  console.log("Basic results saved to comparison-results.json");
+  console.log("Basic results saved to results/comparison-results.json");
   
   // Save detailed differences to file
   if (detailedDifferences.length > 0) {
     await Deno.writeTextFile(
-      "detailed-differences.json", 
+      "results/detailed-differences.json", 
       JSON.stringify(detailedDifferences, null, 2)
     );
-    console.log(`Detailed differences saved to detailed-differences.json (${detailedDifferences.length} files with differences)`);
+    console.log(`Detailed differences saved to results/detailed-differences.json (${detailedDifferences.length} files with differences)`);
     
     // Generate human-readable summary
     const summaryLines = ["# Detailed Differences Summary\n"];
@@ -301,10 +301,10 @@ if (import.meta.main) {
     });
     
     await Deno.writeTextFile(
-      "differences-summary.md", 
+      "results/differences-summary.md", 
       summaryLines.join('\n')
     );
-    console.log("Human-readable summary saved to differences-summary.md");
+    console.log("Human-readable summary saved to results/differences-summary.md");
   } else {
     console.log("No detailed differences to save - all different files had only excluded properties!");
   }
