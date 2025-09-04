@@ -66,3 +66,130 @@ deno run --allow-env --allow-read --allow-net --allow-write migrate.ts -p <SOURC
 ### Pointing to a different instance
 
 Pass in the `-u` argument with the domain of the other instance. By default, these scripts apply to your projects on `app.launchdarkly.com`.
+
+## Deno Tasks - Simplified Workflow
+
+This project includes predefined Deno tasks that simplify the migration workflow. These tasks handle all the necessary permissions and flags automatically.
+
+### Available Tasks
+
+#### 1. `import` - Export Source Project Data
+Exports all project data (metadata, environments, flags, and segments) from the source project.
+
+```bash
+deno task import -p <SOURCE_PROJECT_KEY> -k <SOURCE_API_KEY>
+```
+
+**Example:**
+```bash
+deno task import -p my-source-project -k api-12345678-1234-1234-1234-123456789abc
+```
+
+This creates a `source/project/<SOURCE_PROJECT_KEY>/` directory with all exported data.
+
+#### 2. `migrate-metadata` - Copy Project Structure (Run Once Only)
+⚠️ **Important: Run this task ONLY ONCE** - it copies project metadata and environments to the destination.
+
+```bash
+deno task migrate-metadata -p <SOURCE_PROJECT_KEY> -k <DESTINATION_API_KEY> -d <DESTINATION_PROJECT_KEY>
+```
+
+**Example:**
+```bash
+deno task migrate-metadata -p my-source-project -k api-87654321-4321-4321-4321-cba987654321 -d my-destination-project
+```
+
+**What it does:**
+- Creates the destination project
+- Copies all environments from source to destination
+- Sets up the project structure and metadata
+- **Should only be run once per migration**
+
+#### 3. `migrate` - Copy Flags and Segments
+Copies all feature flags and user segments from the source project to the destination project.
+
+```bash
+deno task migrate -p <SOURCE_PROJECT_KEY> -k <DESTINATION_API_KEY> -d <DESTINATION_PROJECT_KEY>
+```
+
+**Example:**
+```bash
+deno task migrate -p my-source-project -k api-87654321-4321-4321-4321-cba987654321 -d my-destination-project
+```
+
+**What it does:**
+- Copies all feature flags with their configurations
+- Copies all user segments
+- Preserves targeting rules and prerequisites
+- Can be run multiple times if needed
+
+#### 4. `cleanup` - Remove Flags and Segments
+⚠️ **Danger Zone** - Deletes all flags and segments from a project while preserving the project structure.
+
+```bash
+deno task cleanup -p <PROJECT_KEY> -k <API_KEY>
+```
+
+**Example:**
+```bash
+deno task cleanup -p my-project-to-clean -k api-12345678-1234-1234-1234-123456789abc
+```
+
+**What it does:**
+- Deletes ALL feature flags in the project
+- Deletes ALL user segments in the project
+- **Preserves** the project itself and environments
+- **⚠️ Use with extreme caution - this action is irreversible**
+
+### Complete Migration Workflow
+
+Here's the recommended step-by-step process:
+
+#### Step 1: Export source data
+```bash
+deno task import -p source-project -k <SOURCE_API_KEY>
+```
+
+#### Step 2: Create destination project structure (once only)
+```bash
+deno task migrate-metadata -p source-project -k <DEST_API_KEY> -d destination-project
+```
+
+#### Step 3: Migrate flags and segments
+```bash
+deno task migrate -p source-project -k <DEST_API_KEY> -d destination-project
+```
+
+
+### In case of an issue that require to migrate all the fresh segments and flags
+
+#### Step 2: Clean up destination project
+```bash
+deno task cleanup -p destination-project -k <DEST_API_KEY>
+```
+
+#### Step 3: Export fresh source data
+```bash
+deno task import -p source-project -k <SOURCE_API_KEY>
+```
+
+#### Step 4: Migrate flags and segments
+```bash
+deno task migrate -p source-project -k <DEST_API_KEY> -d destination-project
+```
+
+### Task Arguments
+
+All tasks support the following common arguments:
+
+- `-p, --projKey` - Project key
+- `-k, --apikey` - LaunchDarkly API key  
+- `-d, --destProjKey` - Destination project key (for migration tasks)
+- `-u, --domain` - LaunchDarkly domain (defaults to `app.launchdarkly.com`)
+
+### Error Handling
+
+- Tasks will validate that required source data exists before proceeding
+- Rate limiting is automatically handled with exponential backoff
+- Clear error messages are provided for common issues
+- The cleanup task includes safety checks to prevent accidental data loss

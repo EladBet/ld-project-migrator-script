@@ -8,7 +8,7 @@ import {
   ldAPIPatchRequest,
   ldAPIPostRequest,
   rateLimitRequest,
-  delay
+  ldAPIRequest
 } from "./utils.ts";
 import * as Colors from "https://deno.land/std/fmt/colors.ts";
 
@@ -39,50 +39,23 @@ const projectJson = await getJson(
   `./source/project/${inputArgs.projKeySource}/project.json`,
 );
 
-const buildEnv: Array<any> = [];
+const envkeys: Array<string> = projectJson.environments.items.map((env: any) => env.key);
 
-projectJson.environments.items.forEach((env: any) => {
-  const newEnv: any = {
-    name: env.name,
-    key: env.key,
-    color: env.color,
-  };
+const projResp = await fetch(
+  ldAPIRequest(
+    inputArgs.apikey,
+    inputArgs.domain,
+    `projects/${inputArgs.projKeyDest}`,
+  ),
+);
 
-  if (env.defaultTtl) newEnv.defaultTtl = env.defaultTtl;
-  if (env.confirmChanges) newEnv.confirmChanges = env.confirmChanges;
-  if (env.secureMode) newEnv.secureMode = env.secureMode;
-  if (env.defaultTrackEvents) newEnv.defaultTrackEvents = env.defaultTrackEvents;
-  if (env.tags) newEnv.tags = env.tags;
-
-  buildEnv.push(newEnv);
-});
-
-const envkeys: Array<string> = buildEnv.map((env: any) => env.key);
-
-const projRep = projectJson; //as Project
-const projPost: any = {
-  key: inputArgs.projKeyDest,
-  name: inputArgs.projKeyDest,  // Optional TODO: convert the target project key to a human-friendly project name
-  tags: projRep.tags,
-  environments: buildEnv,
-}; //as ProjectPost
-
-if (projRep.defaultClientSideAvailability) {
-  projPost.defaultClientSideAvailability = projRep.defaultClientSideAvailability;
-} else {
-  projPost.includeInSnippetByDefault = projRep.includeInSnippetByDefault;
+const projectResponseJson = await projResp.json();
+if (projResp == null || projectResponseJson.message?.startsWith('Unknown project key')) {
+  console.log(Colors.yellow("Failed getting project, run migrate-metadata.ts to create the project"));
+  Deno.exit(1);
 }
+const projRep = projectJson; //as Project
 
-const projResp = await rateLimitRequest(
-  ldAPIPostRequest(inputArgs.apikey, inputArgs.domain, `projects`, projPost),
-  'projects'
-);
-
-consoleLogger(
-  projResp.status,
-  `Creating Project: ${inputArgs.projKeyDest} Status: ${projResp.status}`,
-);
-await projResp.json();
 
 for (const env of projRep.environments.items) {
   const segmentData = await getJson(
