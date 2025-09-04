@@ -3,7 +3,7 @@ import {
   ensureDir,
   ensureDirSync,
 } from "https://deno.land/std@0.149.0/fs/mod.ts";
-import { consoleLogger, delay, ldAPIRequest, writeSourceData } from "./utils.ts";
+import { consoleLogger, delay, ldAPIRequest, rateLimitRequest, writeSourceData } from "./utils.ts";
 
 interface Arguments {
   projKey: string;
@@ -102,18 +102,19 @@ const pageSize : number = 5;
 let offset: number = 0;
 let moreFlags : boolean = true;
 const flags : string[] = [];
-let path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}&filter=state:live`;
+let path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}`;
 
 while (moreFlags) {
 
   console.log(`Building flag list: ${offset} to ${offset + pageSize}`);
 
-  const flagsResp = await fetch(
+  const flagsResp = await rateLimitRequest(
     ldAPIRequest(
       inputArgs.apikey,
       inputArgs.domain,
       path,
     ),
+    "flags",
   );
 
   if (flagsResp.status > 201) {
@@ -131,7 +132,7 @@ while (moreFlags) {
 
   if (flagsData._links.next) {
     offset += pageSize;
-    path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}&filter=state:live`;
+    path = `flags/${inputArgs.projKey}?summary=true&limit=${pageSize}&offset=${offset}`;
   } else {
     moreFlags = false;
   }
@@ -150,12 +151,13 @@ for (const [index, flagKey] of flags.entries()) {
 
   await delay(200);
 
-  const flagResp = await fetch(
+  const flagResp = await rateLimitRequest(
     ldAPIRequest(
       inputArgs.apikey,
       inputArgs.domain,
       `flags/${inputArgs.projKey}/${flagKey}`,
     ),
+    "flags",
   );
   if (flagResp.status > 201) {
     consoleLogger(flagResp.status, `Error getting flag '${flagKey}': ${flagResp.status}`);

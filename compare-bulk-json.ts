@@ -20,7 +20,7 @@ interface DetailedDifference {
 }
 
 // Properties to exclude from comparison (known to be different between projects)
-const EXCLUDED_PROPERTIES = ["heref", "href", "salt", "sel", "_version", "creationDate", "_id", "maintainerId", "_maintainer", "lastModified", "version", "ref", "_debugEventsUntilDate", "deprecatedDate"];
+const EXCLUDED_PROPERTIES = ["heref", "href", "salt", "sel", "_version", "creationDate", "_id", "maintainerId", "_maintainer", "lastModified", "version", "ref", "_debugEventsUntilDate", "deprecatedDate", "includeInSnippet"];
 
 function removeExcludedProperties(obj: any): any {
   if (obj === null || typeof obj !== 'object') {
