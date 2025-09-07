@@ -5,3 +5,4 @@ results/*
 migrate-default.sh
 property-analysis first migration.md
 .cursor/*
+.DS_Store
