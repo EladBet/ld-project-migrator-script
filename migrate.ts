@@ -8,7 +8,8 @@ import {
   ldAPIPatchRequest,
   ldAPIPostRequest,
   rateLimitRequest,
-  ldAPIRequest
+  ldAPIRequest,
+  ldAPIDeprecateFlagRequest
 } from "./utils.ts";
 import * as Colors from "https://deno.land/std/fmt/colors.ts";
 
@@ -194,6 +195,26 @@ for (const [index, flagkey] of flagList.entries()) {
   );
   if (flagResp.status == 200 || flagResp.status == 201) {
     console.log("\tFlag created");
+    
+    // Check if flag should be deprecated and make deprecation PATCH call
+    if (flag.deprecated === true) {
+      console.log(`\tFlag ${flag.key} is marked as deprecated, applying deprecation...`);
+      
+      const deprecateResp = await rateLimitRequest(
+        ldAPIDeprecateFlagRequest(
+          inputArgs.apikey,
+          inputArgs.domain,
+          inputArgs.projKeyDest,
+          flag.key,
+        ),
+      );
+      
+      if (deprecateResp.status == 200 || deprecateResp.status == 201) {
+        console.log(`\tFlag ${flag.key} successfully deprecated`);
+      } else {
+        console.log(`\tError deprecating flag ${flag.key}: ${deprecateResp.status}`);
+      }
+    }
   } else {
     console.log(`Error for flag ${newFlag.key}: ${flagResp.status}`);
   }
