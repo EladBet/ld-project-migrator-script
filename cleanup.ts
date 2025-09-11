@@ -27,6 +27,12 @@ const inputArgs: Arguments = yargs(Deno.args)
   .alias("k", "apikey")
   .alias("u", "domain")
   .default("u", "app.launchdarkly.com")
+  .check((argv) => {
+    if (argv.projKey === "default") {
+      throw new Error("Project key cannot be 'default'. Please specify a different project key.");
+    }
+    return true;
+  })
   .parse() as Arguments;
 
 console.log(Colors.green(`Starting cleanup for project: ${inputArgs.projKey}...`));
@@ -46,8 +52,68 @@ if (projResp == null || projectResponseJson.message?.startsWith('Unknown project
 }
 const projRep = projectResponseJson; //as Project
 
+// PHASE 1: Delete all flags
+console.log(`Phase 2: Fetching and deleting flags for project ${inputArgs.projKey}`);
 
-// PHASE 1: Delete all segments 
+// Fetch flags from API with pagination
+const pageSize: number = 20;
+let offset: number = 0;
+let moreFlags: boolean = true;
+const flags: string[] = [];
+
+while (moreFlags) {
+  console.log(`Building flag list: ${offset} to ${offset + pageSize}`);
+
+  const flagsResp = await rateLimitRequest(
+    ldAPIRequest(
+      inputArgs.apikey,
+      inputArgs.domain,
+      `flags/${inputArgs.projKey}?limit=${pageSize}&offset=${offset}`,
+    ),
+    "flags",
+  );
+
+  if (flagsResp.status > 201) {
+    consoleLogger(flagsResp.status, `Error getting flags: ${flagsResp.status}`);
+    consoleLogger(flagsResp.status, await flagsResp.text());
+    break;
+  }
+
+  const flagsData = await flagsResp.json();
+  flags.push(...flagsData.items.map((flag: any) => flag.key));
+
+  if (flagsData._links.next) {
+    offset += pageSize;
+  } else {
+    moreFlags = false;
+  }
+}
+
+console.log(`Found ${flags.length} flags`);
+
+// Delete flags
+for (const [index, flagkey] of flags.entries()) {
+  console.log(`Deleting flag ${index + 1} of ${flags.length}: ${flagkey}`);
+
+  const flagResp = await rateLimitRequest(
+    ldAPIDeleteRequest(
+      inputArgs.apikey,
+      inputArgs.domain,
+      `flags/${inputArgs.projKey}/${flagkey}`
+    ),
+    "flags",
+  );
+  
+  if (flagResp.status == 200 || flagResp.status == 204) {
+    console.log(`\t✓ Flag ${flagkey} deleted`);
+  } else {
+    console.log(`\t✗ Error deleting flag ${flagkey}: ${flagResp.status}`);
+    const errorText = await flagResp.text();
+    consoleLogger(flagResp.status, errorText);
+  }
+}
+
+// PHASE 2: Delete all segments 
 for (const env of projRep.environments.items) {
   console.log(`Phase 1: Fetching and deleting segments for environment ${env.key}`);
   
@@ -116,63 +182,4 @@ for (const env of projRep.environments.items) {
   }
 };
 
-// PHASE 2: Delete all flags
-console.log(`Phase 2: Fetching and deleting flags for project ${inputArgs.projKey}`);
 
-// Fetch flags from API with pagination
-const pageSize: number = 20;
-let offset: number = 0;
-let moreFlags: boolean = true;
-const flags: string[] = [];
-
-while (moreFlags) {
-  console.log(`Building flag list: ${offset} to ${offset + pageSize}`);
-
-  const flagsResp = await rateLimitRequest(
-    ldAPIRequest(
-      inputArgs.apikey,
-      inputArgs.domain,
-      `flags/${inputArgs.projKey}?limit=${pageSize}&offset=${offset}`,
-    ),
-    "flags",
-  );
-
-  if (flagsResp.status > 201) {
-    consoleLogger(flagsResp.status, `Error getting flags: ${flagsResp.status}`);
-    consoleLogger(flagsResp.status, await flagsResp.text());
-    break;
-  }
-
-  const flagsData = await flagsResp.json();
-  flags.push(...flagsData.items.map((flag: any) => flag.key));
-
-  if (flagsData._links.next) {
-    offset += pageSize;
-  } else {
-    moreFlags = false;
-  }
-}
-
-console.log(`Found ${flags.length} flags`);
-
-// Delete flags
-for (const [index, flagkey] of flags.entries()) {
-  console.log(`Deleting flag ${index + 1} of ${flags.length}: ${flagkey}`);
-
-  const flagResp = await rateLimitRequest(
-    ldAPIDeleteRequest(
-      inputArgs.apikey,
-      inputArgs.domain,
-      `flags/${inputArgs.projKey}/${flagkey}`
-    ),
-    "flags",
-  );
-  
-  if (flagResp.status == 200 || flagResp.status == 204) {
-    console.log(`\t✓ Flag ${flagkey} deleted`);
-  } else {
-    console.log(`\t✗ Error deleting flag ${flagkey}: ${flagResp.status}`);
-    const errorText = await flagResp.text();
-    consoleLogger(flagResp.status, errorText);
-  }
-}
