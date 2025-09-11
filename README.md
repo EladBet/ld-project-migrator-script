@@ -117,11 +117,17 @@ deno task migrate -p <SOURCE_PROJECT_KEY> -k <DESTINATION_API_KEY> -d <DESTINATI
 deno task migrate -p my-source-project -k api-87654321-4321-4321-4321-cba987654321 -d my-destination-project
 ```
 
+**To resume from a specific flag index or skip segments:**
+```bash
+deno task migrate -p my-source-project -k api-87654321-4321-4321-4321-cba987654321 -d my-destination-project -i 461
+```
+
 **What it does:**
 - Copies all feature flags with their configurations
 - Copies all user segments
 - Preserves targeting rules and prerequisites
 - Can be run multiple times if needed
+- Use `-i <index>` to skip segments and resume from a specific flag index
 
 #### 4. `cleanup` - Remove Flags and Segments
 ⚠️ **Danger Zone** - Deletes all flags and segments from a project while preserving the project structure.
