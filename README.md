@@ -193,6 +193,104 @@ All tasks support the following common arguments:
 - `-d, --destProjKey` - Destination project key (for migration tasks)
 - `-u, --domain` - LaunchDarkly domain (defaults to `app.launchdarkly.com`)
 
+## Compare Script - Migration Validation
+
+The `compare-bulk-json.ts` script allows you to compare exported project data between source and destination projects to validate successful migration and identify any differences.
+
+### How to Run the Compare Script
+
+```bash
+deno task compare -p <SOURCE_PROJECT_KEY> -d <DESTINATION_PROJECT_KEY>
+```
+
+**Example - Compare flag configurations:**
+```bash
+deno task compare -p source-project -d destination-project
+```
+
+**Example - Compare segments only:**
+```bash
+deno task compare -p source-project -d destination-project -s
+```
+
+### Compare Script Options
+
+- `-p, --primaryFolder` - Source project key (primary folder to compare from)
+- `-d, --destinationFolder` - Destination project key (target folder to compare against) 
+- `-s, --segments` - Compare only segment-production.json files instead of all flags (optional)
+
+### What the Compare Script Does
+
+1. **Compares JSON files** between two exported project directories
+2. **Excludes known differences** such as IDs, timestamps, and version numbers that are expected to differ
+3. **Identifies real configuration differences** that might indicate migration issues
+4. **Generates comprehensive reports** with detailed analysis
+
+### Expected Results in the `results/` Folder
+
+After running the compare script, you'll find these files in the `results/` directory:
+
+#### 1. `comparison-results.json`
+- Raw comparison results for all files
+- Status for each file: `identical`, `different`, `missing`, or `error`
+- Machine-readable format for further processing
+
+#### 2. `detailed-differences.json`
+- Detailed breakdown of specific property differences
+- Shows exact property paths and values that differ
+- Used as input for the analysis reports
+
+#### 3. `differences-summary.md`
+- Human-readable summary of all differences found
+- Organized by file with property-by-property breakdown
+- Useful for manual review of specific files
+
+#### 4. `property-analysis.md`
+- **Most important report** - Analyzes differences by frequency
+- Groups similar differences across multiple files
+- Prioritizes production environment examples
+- Shows which properties differ most commonly
+- Helps identify systematic migration issues
+
+#### 5. `property-analysis.csv`
+- Spreadsheet-friendly version of the property analysis
+- Can be opened in Excel/Google Sheets for further analysis
+- Includes counts, percentages, and example values
+
+### Understanding the Results
+
+**Console Output Summary:**
+- Total files compared
+- ✓ Identical files (perfect matches)
+- ⚠ Different files (have configuration differences)
+- ✗ Missing files (exist in source but not destination)
+- 💥 Error files (comparison failed)
+
+**Key Things to Look For:**
+
+1. **High number of identical files** = Good migration
+2. **Missing files** = Potential migration failures
+3. **Common property differences** in analysis = Systematic issues
+4. **Environment-specific differences** = Targeting rule problems
+
+### Typical Workflow
+
+1. **After migration**, export both source and destination project data
+2. **Run compare script** to validate the migration
+3. **Review property-analysis.md** for systematic issues
+4. **Check differences-summary.md** for specific file problems
+5. **Use CSV file** for spreadsheet analysis if needed
+
+### Excluded Properties
+
+The script automatically excludes these properties that are expected to differ:
+- `_id`, `maintainerId`, `version`, `_version`
+- `creationDate`, `lastModified`, `lastModifiedDate`
+- `salt`, `href`, `_links`, `generation`
+- And other system-generated values
+
+This ensures the comparison focuses on actual configuration differences rather than system metadata.
+
 ### Error Handling
 
 - Tasks will validate that required source data exists before proceeding

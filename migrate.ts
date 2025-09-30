@@ -9,7 +9,8 @@ import {
   ldAPIPostRequest,
   rateLimitRequest,
   ldAPIRequest,
-  ldAPIDeprecateFlagRequest
+  ldAPIDeprecateFlagRequest,
+  delay
 } from "./utils.ts";
 import * as Colors from "https://deno.land/std/fmt/colors.ts";
 
@@ -174,7 +175,7 @@ for (const [index, flagkey] of flagList.entries()) {
     console.log(`Skipping flag ${index + 1}: ${flagkey}`);
     continue;
   }
-
+  await delay(200);
   // Read flag
   console.log(`Reading flag ${index + 1} of ${flagList.length} : ${flagkey}`);
 

@@ -7,6 +7,7 @@ import yargs from "https://deno.land/x/yargs@v17.7.2-deno/deno.ts";
 interface Arguments {
   primaryFolder: string;
   destinationFolder: string;
+  segments?: boolean;
 }
 
 interface ComparisonResult {
@@ -28,15 +29,23 @@ interface DetailedDifference {
 interface PropertySummary {
   path: string;
   count: number;
+  environments: Set<string>;
   examples: Array<{
     file: string;
     value1: any;
     value2: any;
+    environment?: string;
   }>;
 }
 
 // Properties to exclude from comparison (known to be different between projects)
-const EXCLUDED_PROPERTIES = ["heref", "href", "salt", "sel", "_version", "creationDate", "_id", "maintainerId", "_maintainer", "lastModified", "version", "ref", "_debugEventsUntilDate", "deprecatedDate", "includeInSnippet"];
+const EXCLUDED_PROPERTIES = [
+  // General exclusions
+  "heref", "href", "salt", "sel", "_version", "creationDate", "_id", "maintainerId", "_maintainer", 
+  "lastModified", "version", "ref", "_debugEventsUntilDate", "deprecatedDate", "includeInSnippet",
+  // Segment-specific exclusions (but keep included/excluded for analysis)
+  "lastModifiedDate", "generation", "_links"
+];
 
 function removeExcludedProperties(obj: any): any {
   if (obj === null || typeof obj !== 'object') {
@@ -149,15 +158,25 @@ async function compareJsonFiles(file1: string, file2: string): Promise<{isIdenti
   }
 }
 
-async function bulkCompareDirectories(dir1: string, dir2: string): Promise<{results: ComparisonResult[], detailedDifferences: DetailedDifference[]}> {
+async function bulkCompareDirectories(dir1: string, dir2: string, segmentsMode = false): Promise<{results: ComparisonResult[], detailedDifferences: DetailedDifference[]}> {
   const results: ComparisonResult[] = [];
   const detailedDifferences: DetailedDifference[] = [];
   const files: string[] = [];
   
-  // Collect all JSON files from first directory
-  for await (const entry of walk(dir1, { exts: [".json"] })) {
-    if (entry.isFile) {
-      files.push(entry.path);
+  // Collect files based on mode
+  if (segmentsMode) {
+    // Only collect segment-production.json files
+    for await (const entry of walk(dir1, { exts: [".json"] })) {
+      if (entry.isFile && entry.name === "segment-production.json") {
+        files.push(entry.path);
+      }
+    }
+  } else {
+    // Collect all JSON files from flags directory
+    for await (const entry of walk(dir1, { exts: [".json"] })) {
+      if (entry.isFile) {
+        files.push(entry.path);
+      }
     }
   }
   
@@ -206,7 +225,7 @@ async function bulkCompareDirectories(dir1: string, dir2: string): Promise<{resu
           result: { 
             file: relativePath, 
             status: 'error' as const, 
-            details: error.message 
+            details: error instanceof Error ? error.message : String(error)
           },
           detailed: null
         };
@@ -275,31 +294,104 @@ async function analyzeDifferences() {
     // Read the detailed differences file
     const data = JSON.parse(await Deno.readTextFile("results/detailed-differences.json")) as DetailedDifference[];
     
+    // For segment analysis, we need to read the segment file to get segment names
+    let segmentData: any = null;
+    if (data.length > 0 && data[0].file === "segment-production.json") {
+      try {
+        // Read the first segment file to get segment names
+        const segmentFile = `${dir1.replace('/flags', '')}/segment-production.json`;
+        segmentData = JSON.parse(await Deno.readTextFile(segmentFile));
+      } catch (error) {
+        console.warn(Colors.yellow(`Warning: Could not read segment file for names: ${error instanceof Error ? error.message : String(error)}`));
+      }
+    }
+    
     // Group differences by property path
     const pathCounts = new Map<string, PropertySummary>();
     
+    // Helper function to get segment name
+    const getSegmentName = (segmentIndex: number): string => {
+      return segmentData?.items?.[segmentIndex]?.name || `segment-${segmentIndex}`;
+    };
+
     data.forEach(fileDiff => {
       fileDiff.differences.forEach(diff => {
         const path = diff.path;
         
-        if (!pathCounts.has(path)) {
-          pathCounts.set(path, {
-            path,
+        // Extract environment and base property path for grouping
+        let groupKey = path;
+        let environment = '';
+        
+        // Check if this is an environment-specific property
+        const envMatch = path.match(/^environments\.([^.]+)\.(.+)$/);
+        if (envMatch) {
+          environment = envMatch[1];
+          const basePath = envMatch[2];
+          groupKey = `environments.*${basePath}`;
+        }
+        
+        // Group included/excluded array differences more meaningfully
+        const segmentIncludedMatch = path.match(/^items\[(\d+)\]\.included\[\d+\]$/);
+        const segmentExcludedMatch = path.match(/^items\[(\d+)\]\.excluded\[\d+\]$/);
+        const segmentIncludedListMatch = path.match(/^items\[(\d+)\]\.included$/);
+        const segmentExcludedListMatch = path.match(/^items\[(\d+)\]\.excluded$/);
+        
+        if (segmentIncludedMatch) {
+          const segmentIndex = parseInt(segmentIncludedMatch[1]);
+          const segmentName = getSegmentName(segmentIndex);
+          groupKey = `"${segmentName}" segment - included member changes`;
+        } else if (segmentExcludedMatch) {
+          const segmentIndex = parseInt(segmentExcludedMatch[1]);
+          const segmentName = getSegmentName(segmentIndex);
+          groupKey = `"${segmentName}" segment - excluded member changes`;
+        } else if (segmentIncludedListMatch) {
+          const segmentIndex = parseInt(segmentIncludedListMatch[1]);
+          const segmentName = getSegmentName(segmentIndex);
+          groupKey = `"${segmentName}" segment - included list changes`;
+        } else if (segmentExcludedListMatch) {
+          const segmentIndex = parseInt(segmentExcludedListMatch[1]);
+          const segmentName = getSegmentName(segmentIndex);
+          groupKey = `"${segmentName}" segment - excluded list changes`;
+        }
+        
+        if (!pathCounts.has(groupKey)) {
+          pathCounts.set(groupKey, {
+            path: groupKey,
             count: 0,
+            environments: new Set(),
             examples: []
           });
         }
         
-        const summary = pathCounts.get(path)!;
+        const summary = pathCounts.get(groupKey)!;
         summary.count++;
         
-        // Store up to 3 examples
+        if (environment) {
+          summary.environments.add(environment);
+        }
+        
+        // Prioritize production examples, then limit to 3 total
+        const isProduction = environment === 'production';
+        const hasProductionExample = summary.examples.some(ex => ex.environment === 'production');
+        
         if (summary.examples.length < 3) {
           summary.examples.push({
             file: fileDiff.file,
             value1: diff.value1,
-            value2: diff.value2
+            value2: diff.value2,
+            environment: environment || undefined
           });
+        } else if (isProduction && !hasProductionExample) {
+          // Replace a non-production example with production example
+          const nonProdIndex = summary.examples.findIndex(ex => ex.environment !== 'production');
+          if (nonProdIndex !== -1) {
+            summary.examples[nonProdIndex] = {
+              file: fileDiff.file,
+              value1: diff.value1,
+              value2: diff.value2,
+              environment: environment || undefined
+            };
+          }
         }
       });
     });
@@ -323,9 +415,22 @@ async function analyzeDifferences() {
       console.log(Colors.cyan(`${index + 1}. ${summary.path}`));
       console.log(Colors.yellow(`   Occurs in: ${summary.count} files (${percentage}% of different files)`));
       
-      // Show examples
-      summary.examples.forEach((example, i) => {
-        console.log(`   Example ${i + 1}: ${example.file}`);
+      // Show environments if this is a grouped environment property
+      if (summary.environments.size > 0) {
+        const envList = Array.from(summary.environments).sort();
+        console.log(Colors.magenta(`   Environments: ${envList.join(', ')}`));
+      }
+      
+      // Show examples (prioritizing production)
+      const sortedExamples = summary.examples.sort((a, b) => {
+        if (a.environment === 'production' && b.environment !== 'production') return -1;
+        if (b.environment === 'production' && a.environment !== 'production') return 1;
+        return 0;
+      });
+      
+      sortedExamples.forEach((example, i) => {
+        const envLabel = example.environment ? ` (${example.environment})` : '';
+        console.log(`   Example ${i + 1}: ${example.file}${envLabel}`);
         const val1 = example.value1 === undefined ? "undefined" : JSON.stringify(example.value1);
         const val2 = example.value2 === undefined ? "undefined" : JSON.stringify(example.value2);
         console.log(`     Default: ${Colors.red(val1)}`);
@@ -344,10 +449,25 @@ async function analyzeDifferences() {
       const percentage = ((summary.count / data.length) * 100).toFixed(1);
       reportLines.push(`### ${index + 1}. \`${summary.path}\``);
       reportLines.push(`- **Frequency:** ${summary.count} files (${percentage}%)`);
+      
+      // Show environments if this is a grouped environment property
+      if (summary.environments.size > 0) {
+        const envList = Array.from(summary.environments).sort();
+        reportLines.push(`- **Environments:** ${envList.join(', ')}`);
+      }
+      
       reportLines.push(`- **Examples:**`);
       
-      summary.examples.forEach((example, i) => {
-        reportLines.push(`  ${i + 1}. **File:** \`${example.file}\``);
+      // Sort examples to prioritize production
+      const sortedExamples = summary.examples.sort((a, b) => {
+        if (a.environment === 'production' && b.environment !== 'production') return -1;
+        if (b.environment === 'production' && a.environment !== 'production') return 1;
+        return 0;
+      });
+      
+      sortedExamples.forEach((example, i) => {
+        const envLabel = example.environment ? ` (${example.environment})` : '';
+        reportLines.push(`  ${i + 1}. **File:** \`${example.file}\`${envLabel}`);
         reportLines.push(`     - **Default:** \`${JSON.stringify(example.value1)}\``);
         reportLines.push(`     - **Migration:** \`${JSON.stringify(example.value2)}\``);
       });
@@ -358,13 +478,20 @@ async function analyzeDifferences() {
     console.log(Colors.green("Detailed analysis saved to results/property-analysis.md"));
     
     // Generate CSV for spreadsheet analysis
-    const csvLines = ["Property Path,Count,Percentage,Example File,Default Value,Migration Value"];
+    const csvLines = ["Property Path,Count,Percentage,Environments,Example File,Example Environment,Default Value,Migration Value"];
     sortedPaths.forEach(summary => {
       const percentage = ((summary.count / data.length) * 100).toFixed(1);
-      const example = summary.examples[0];
+      const envList = summary.environments.size > 0 ? Array.from(summary.environments).sort().join(';') : '';
+      
+      // Use production example if available, otherwise first example
+      const productionExample = summary.examples.find(ex => ex.environment === 'production');
+      const example = productionExample || summary.examples[0];
+      
       const value1Str = JSON.stringify(example.value1) || "undefined";
       const value2Str = JSON.stringify(example.value2) || "undefined";
-      csvLines.push(`"${summary.path}",${summary.count},${percentage}%,"${example.file}","${value1Str.replace(/"/g, '""')}","${value2Str.replace(/"/g, '""')}"`);
+      const exampleEnv = example.environment || '';
+      
+      csvLines.push(`"${summary.path}",${summary.count},${percentage}%,"${envList}","${example.file}","${exampleEnv}","${value1Str.replace(/"/g, '""')}","${value2Str.replace(/"/g, '""')}"`);
     });
     
     await Deno.writeTextFile("results/property-analysis.csv", csvLines.join('\n'));
@@ -378,25 +505,69 @@ async function analyzeDifferences() {
 const inputArgs: Arguments = yargs(Deno.args)
   .alias("p", "primaryFolder")
   .alias("d", "destinationFolder")
+  .alias("s", "segments")
   .describe("p", "Primary folder name (source)")
   .describe("d", "Destination folder name (target)")
+  .describe("s", "Compare segment-production.json files instead of flags")
+  .boolean("s")
   .parse() as Arguments;
 
 // Construct full paths with prefix and suffix
-const dir1 = `source/project/${inputArgs.primaryFolder}/flags`;
-const dir2 = `source/project/${inputArgs.destinationFolder}/flags`;
+let dir1: string;
+let dir2: string;
+
+if (inputArgs.segments) {
+  // Compare segment-production.json files
+  dir1 = `source/project/${inputArgs.primaryFolder}`;
+  dir2 = `source/project/${inputArgs.destinationFolder}`;
+} else {
+  // Compare flags directory (default behavior)
+  dir1 = `source/project/${inputArgs.primaryFolder}/flags`;
+  dir2 = `source/project/${inputArgs.destinationFolder}/flags`;
+}
+
+// Function to clear results directory
+async function clearResultsDirectory() {
+  try {
+    // Check if results directory exists
+    const resultsDirExists = await Deno.stat("results").then(() => true).catch(() => false);
+    
+    if (resultsDirExists) {
+      console.log("Clearing previous results...");
+      // Remove all files in results directory
+      for await (const entry of Deno.readDir("results")) {
+        if (entry.isFile) {
+          await Deno.remove(`results/${entry.name}`);
+        }
+      }
+      console.log("Previous results cleared.");
+    } else {
+      // Create results directory if it doesn't exist
+      await Deno.mkdir("results", { recursive: true });
+      console.log("Created results directory.");
+    }
+  } catch (error) {
+    console.warn(Colors.yellow(`Warning: Could not clear results directory: ${error instanceof Error ? error.message : String(error)}`));
+  }
+}
 
 // Main execution
 if (import.meta.main) {
   
-  console.log(`Comparing ${dir1} with ${dir2}...`);
+  // Clear previous results before starting
+  await clearResultsDirectory();
+  
+  const compareType = inputArgs.segments ? "segment-production.json files" : "flags directory";
+  console.log(`Comparing ${compareType} between ${inputArgs.primaryFolder} and ${inputArgs.destinationFolder}...`);
+  console.log(`Source: ${dir1}`);
+  console.log(`Target: ${dir2}`);
   console.log(`Excluding properties: ${EXCLUDED_PROPERTIES.join(', ')}`);
   
   const startTime = Date.now();
-  const { results, detailedDifferences } = await bulkCompareDirectories(dir1, dir2);
+  const { results, detailedDifferences } = await bulkCompareDirectories(dir1, dir2, inputArgs.segments);
   const endTime = Date.now();
   
-  const summary = generateReport(results);
+  generateReport(results);
   
   console.log(`\nComparison completed in ${(endTime - startTime) / 1000}s`);
   
