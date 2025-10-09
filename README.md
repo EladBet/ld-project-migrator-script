@@ -147,21 +147,69 @@ deno task cleanup -p my-project-to-clean -k api-12345678-1234-1234-1234-12345678
 - **Preserves** the project itself and environments
 - **⚠️ Use with extreme caution - this action is irreversible**
 
+#### 5. `lock` - Bulk Update Member Roles
+Updates all member roles from reader to writer or vice versa based on the exported members data.
+
+```bash
+deno task lock -k <API_KEY> -r <ROLE>
+```
+
+**Example - Dry run (see what would change without applying):**
+```bash
+deno task lock -k api-12345678-1234-1234-1234-123456789abc -r reader --dry
+```
+
+**Example - Update all writers to readers:**
+```bash
+deno task lock -k api-12345678-1234-1234-1234-123456789abc -r reader
+```
+
+**Example - Update all readers to writers:**
+```bash
+deno task lock -k api-12345678-1234-1234-1234-123456789abc -r writer
+```
+
+**What it does:**
+- Reads member data from `source/project/default/members.json`
+- Identifies members with reader or writer roles
+- Updates members to the specified target role
+- Skips members who already have the target role
+- Supports dry-run mode to preview changes before applying
+- Uses rate limiting to handle API limits gracefully
+
+**Arguments:**
+- `-k, --apikey` - LaunchDarkly API key (required)
+- `-r, --role` - Target role: either `reader` or `writer` (required)
+- `--dry` - Dry run mode: preview changes without applying them (optional)
+- `-u, --domain` - LaunchDarkly domain (defaults to `app.launchdarkly.com`)
+
+**Note:** This task requires the members.json file to be present in the source data. You can export it as part of your source project data.
+
 ### Complete Migration Workflow
 
 Here's the recommended step-by-step process:
 
-#### Step 1: Export source data
+#### Step 1: (Optional) Lock member roles if needed
+If you need to bulk update member roles before or after migration:
+```bash
+# Dry run to preview changes
+deno task lock -k <API_KEY> -r reader --dry
+
+# Apply the changes
+deno task lock -k <API_KEY> -r reader
+```
+
+#### Step 2: Export source data
 ```bash
 deno task import -p source-project -k <SOURCE_API_KEY>
 ```
 
-#### Step 2: Create destination project structure (once only)
+#### Step 3: Create destination project structure (once only)
 ```bash
 deno task migrate-metadata -p source-project -k <DEST_API_KEY> -d destination-project
 ```
 
-#### Step 3: Migrate flags and segments
+#### Step 4: Migrate flags and segments
 ```bash
 deno task migrate -p source-project -k <DEST_API_KEY> -d destination-project
 ```
@@ -169,17 +217,17 @@ deno task migrate -p source-project -k <DEST_API_KEY> -d destination-project
 
 ### In case of an issue that require to migrate all the fresh segments and flags
 
-#### Step 2: Clean up destination project
+#### Step 1: Clean up destination project
 ```bash
 deno task cleanup -p destination-project -k <DEST_API_KEY>
 ```
 
-#### Step 3: Export fresh source data
+#### Step 2: Export fresh source data
 ```bash
 deno task import -p source-project -k <SOURCE_API_KEY>
 ```
 
-#### Step 4: Migrate flags and segments
+#### Step 3: Migrate flags and segments
 ```bash
 deno task migrate -p source-project -k <DEST_API_KEY> -d destination-project
 ```
