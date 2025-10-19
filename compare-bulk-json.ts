@@ -7,7 +7,6 @@ import yargs from "https://deno.land/x/yargs@v17.7.2-deno/deno.ts";
 interface Arguments {
   primaryFolder: string;
   destinationFolder: string;
-  segments?: boolean;
 }
 
 interface ComparisonResult {
@@ -158,25 +157,15 @@ async function compareJsonFiles(file1: string, file2: string): Promise<{isIdenti
   }
 }
 
-async function bulkCompareDirectories(dir1: string, dir2: string, segmentsMode = false): Promise<{results: ComparisonResult[], detailedDifferences: DetailedDifference[]}> {
+async function bulkCompareDirectories(dir1: string, dir2: string): Promise<{results: ComparisonResult[], detailedDifferences: DetailedDifference[]}> {
   const results: ComparisonResult[] = [];
   const detailedDifferences: DetailedDifference[] = [];
   const files: string[] = [];
   
-  // Collect files based on mode
-  if (segmentsMode) {
-    // Only collect segment-production.json files
-    for await (const entry of walk(dir1, { exts: [".json"] })) {
-      if (entry.isFile && entry.name === "segment-production.json") {
-        files.push(entry.path);
-      }
-    }
-  } else {
-    // Collect all JSON files from flags directory
-    for await (const entry of walk(dir1, { exts: [".json"] })) {
-      if (entry.isFile) {
-        files.push(entry.path);
-      }
+  // Collect all JSON files from flags directory
+  for await (const entry of walk(dir1, { exts: [".json"] })) {
+    if (entry.isFile) {
+      files.push(entry.path);
     }
   }
   
@@ -294,25 +283,8 @@ async function analyzeDifferences() {
     // Read the detailed differences file
     const data = JSON.parse(await Deno.readTextFile("results/detailed-differences.json")) as DetailedDifference[];
     
-    // For segment analysis, we need to read the segment file to get segment names
-    let segmentData: any = null;
-    if (data.length > 0 && data[0].file === "segment-production.json") {
-      try {
-        // Read the first segment file to get segment names
-        const segmentFile = `${dir1.replace('/flags', '')}/segment-production.json`;
-        segmentData = JSON.parse(await Deno.readTextFile(segmentFile));
-      } catch (error) {
-        console.warn(Colors.yellow(`Warning: Could not read segment file for names: ${error instanceof Error ? error.message : String(error)}`));
-      }
-    }
-    
     // Group differences by property path
     const pathCounts = new Map<string, PropertySummary>();
-    
-    // Helper function to get segment name
-    const getSegmentName = (segmentIndex: number): string => {
-      return segmentData?.items?.[segmentIndex]?.name || `segment-${segmentIndex}`;
-    };
 
     data.forEach(fileDiff => {
       fileDiff.differences.forEach(diff => {
@@ -327,31 +299,7 @@ async function analyzeDifferences() {
         if (envMatch) {
           environment = envMatch[1];
           const basePath = envMatch[2];
-          groupKey = `environments.*${basePath}`;
-        }
-        
-        // Group included/excluded array differences more meaningfully
-        const segmentIncludedMatch = path.match(/^items\[(\d+)\]\.included\[\d+\]$/);
-        const segmentExcludedMatch = path.match(/^items\[(\d+)\]\.excluded\[\d+\]$/);
-        const segmentIncludedListMatch = path.match(/^items\[(\d+)\]\.included$/);
-        const segmentExcludedListMatch = path.match(/^items\[(\d+)\]\.excluded$/);
-        
-        if (segmentIncludedMatch) {
-          const segmentIndex = parseInt(segmentIncludedMatch[1]);
-          const segmentName = getSegmentName(segmentIndex);
-          groupKey = `"${segmentName}" segment - included member changes`;
-        } else if (segmentExcludedMatch) {
-          const segmentIndex = parseInt(segmentExcludedMatch[1]);
-          const segmentName = getSegmentName(segmentIndex);
-          groupKey = `"${segmentName}" segment - excluded member changes`;
-        } else if (segmentIncludedListMatch) {
-          const segmentIndex = parseInt(segmentIncludedListMatch[1]);
-          const segmentName = getSegmentName(segmentIndex);
-          groupKey = `"${segmentName}" segment - included list changes`;
-        } else if (segmentExcludedListMatch) {
-          const segmentIndex = parseInt(segmentExcludedListMatch[1]);
-          const segmentName = getSegmentName(segmentIndex);
-          groupKey = `"${segmentName}" segment - excluded list changes`;
+          groupKey = `environments.*.${basePath}`;
         }
         
         if (!pathCounts.has(groupKey)) {
@@ -505,26 +453,14 @@ async function analyzeDifferences() {
 const inputArgs: Arguments = yargs(Deno.args)
   .alias("p", "primaryFolder")
   .alias("d", "destinationFolder")
-  .alias("s", "segments")
   .describe("p", "Primary folder name (source)")
   .describe("d", "Destination folder name (target)")
-  .describe("s", "Compare segment-production.json files instead of flags")
-  .boolean("s")
+  .demandOption(["p", "d"])
   .parse() as Arguments;
 
-// Construct full paths with prefix and suffix
-let dir1: string;
-let dir2: string;
-
-if (inputArgs.segments) {
-  // Compare segment-production.json files
-  dir1 = `source/project/${inputArgs.primaryFolder}`;
-  dir2 = `source/project/${inputArgs.destinationFolder}`;
-} else {
-  // Compare flags directory (default behavior)
-  dir1 = `source/project/${inputArgs.primaryFolder}/flags`;
-  dir2 = `source/project/${inputArgs.destinationFolder}/flags`;
-}
+// Construct full paths - always compare flags directory
+const dir1 = `source/project/${inputArgs.primaryFolder}/flags`;
+const dir2 = `source/project/${inputArgs.destinationFolder}/flags`;
 
 // Function to clear results directory
 async function clearResultsDirectory() {
@@ -557,14 +493,13 @@ if (import.meta.main) {
   // Clear previous results before starting
   await clearResultsDirectory();
   
-  const compareType = inputArgs.segments ? "segment-production.json files" : "flags directory";
-  console.log(`Comparing ${compareType} between ${inputArgs.primaryFolder} and ${inputArgs.destinationFolder}...`);
+  console.log(`Comparing flags between ${inputArgs.primaryFolder} and ${inputArgs.destinationFolder}...`);
   console.log(`Source: ${dir1}`);
   console.log(`Target: ${dir2}`);
   console.log(`Excluding properties: ${EXCLUDED_PROPERTIES.join(', ')}`);
   
   const startTime = Date.now();
-  const { results, detailedDifferences } = await bulkCompareDirectories(dir1, dir2, inputArgs.segments);
+  const { results, detailedDifferences } = await bulkCompareDirectories(dir1, dir2);
   const endTime = Date.now();
   
   generateReport(results);

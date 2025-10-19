@@ -241,42 +241,62 @@ All tasks support the following common arguments:
 - `-d, --destProjKey` - Destination project key (for migration tasks)
 - `-u, --domain` - LaunchDarkly domain (defaults to `app.launchdarkly.com`)
 
-## Compare Script - Migration Validation
+## Compare Scripts - Migration Validation
 
-The `compare-bulk-json.ts` script allows you to compare exported project data between source and destination projects to validate successful migration and identify any differences.
+Two scripts are available to validate successful migration and identify any differences between source and destination projects.
 
-### How to Run the Compare Script
+### 1. Compare Flags - `compare-bulk-json.ts`
+
+Compares all feature flag configurations between two projects.
 
 ```bash
 deno task compare -p <SOURCE_PROJECT_KEY> -d <DESTINATION_PROJECT_KEY>
 ```
 
-**Example - Compare flag configurations:**
+**Example:**
 ```bash
 deno task compare -p source-project -d destination-project
 ```
 
-**Example - Compare segments only:**
+**Options:**
+- `-p, --primaryFolder` - Source project key (primary folder to compare from)
+- `-d, --destinationFolder` - Destination project key (target folder to compare against)
+
+**What it does:**
+1. Compares all JSON flag files between two exported project directories
+2. Excludes known differences such as IDs, timestamps, and version numbers
+3. Identifies real configuration differences that might indicate migration issues
+4. Generates comprehensive reports with detailed analysis
+
+### 2. Compare Segments - `compare-segments.ts`
+
+Compares segment configurations between two projects with a human-readable format.
+
 ```bash
-deno task compare -p source-project -d destination-project -s
+deno task compare-segments -p <SOURCE_PROJECT_KEY> -d <DESTINATION_PROJECT_KEY>
 ```
 
-### Compare Script Options
+**Example:**
+```bash
+deno task compare-segments -p source-project -d destination-project
+```
 
+**Options:**
 - `-p, --primaryFolder` - Source project key (primary folder to compare from)
-- `-d, --destinationFolder` - Destination project key (target folder to compare against) 
-- `-s, --segments` - Compare only segment-production.json files instead of all flags (optional)
+- `-d, --destinationFolder` - Destination project key (target folder to compare against)
 
-### What the Compare Script Does
-
-1. **Compares JSON files** between two exported project directories
-2. **Excludes known differences** such as IDs, timestamps, and version numbers that are expected to differ
-3. **Identifies real configuration differences** that might indicate migration issues
-4. **Generates comprehensive reports** with detailed analysis
+**What it does:**
+1. Compares segment-production.json files between two projects
+2. Shows segment-by-segment differences with segment names
+3. For array properties (included, excluded), shows only item counts
+4. For other properties, shows actual value differences
+5. Generates a readable markdown report in `results/segment-prod-compare.md`
 
 ### Expected Results in the `results/` Folder
 
-After running the compare script, you'll find these files in the `results/` directory:
+#### For Flag Comparison (`compare`)
+
+After running the flag comparison, you'll find these files in the `results/` directory:
 
 #### 1. `comparison-results.json`
 - Raw comparison results for all files
@@ -304,6 +324,18 @@ After running the compare script, you'll find these files in the `results/` dire
 - Spreadsheet-friendly version of the property analysis
 - Can be opened in Excel/Google Sheets for further analysis
 - Includes counts, percentages, and example values
+
+#### For Segment Comparison (`compare-segments`)
+
+After running the segment comparison, you'll find:
+
+#### `segment-prod-compare.md`
+- Human-readable markdown report organized by segment
+- Shows segment names and keys
+- Lists all property differences for each segment
+- For arrays (included, excluded), shows count changes (e.g., "1936 items → 0 items")
+- For other properties, shows actual value changes
+- Groups segments by status: Modified, Added, Removed
 
 ### Understanding the Results
 
@@ -338,6 +370,26 @@ The script automatically excludes these properties that are expected to differ:
 - And other system-generated values
 
 This ensures the comparison focuses on actual configuration differences rather than system metadata.
+
+### Compare Variation ID After Migration
+
+To compare individual flag files between source and destination projects in VS Code's diff viewer:
+
+```bash
+code --diff source/project/default/flags/<flag-file-name>.json source/project/pab/flags/<flag-file-name>.json
+```
+
+**Example 1: compare Extension rollout versions**
+```bash
+code --diff source/project/default/flags/browser.tw-9007.ff-792.data.json source/project/pab/flags/browser.tw-9007.ff-792.data.json
+```
+
+**Example 2: compare hawkeye gradual rollout version**
+```bash
+code --diff source/project/default/flags/extension.pm-5837.ff-1273.data.json source/project/pab/flags/extension.pm-5837.ff-1273.data.json
+```
+
+This opens a side-by-side comparison showing differences between the source flag (left) and destination flag (right), which is useful for verifying variation IDs and other flag-specific configurations after migration.
 
 ### Error Handling
 

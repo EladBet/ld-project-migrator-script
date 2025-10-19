@@ -5,6 +5,7 @@
         "migrate": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors migrate.ts",
         "cleanup": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors cleanup.ts",
         "compare": "deno run --allow-read --allow-write --allow-net --unsafely-ignore-certificate-errors compare-bulk-json.ts",
+        "compare-segments": "deno run --allow-read --allow-write compare-segments.ts",
         "lock": "deno run --allow-env --allow-read --allow-net --allow-write --unsafely-ignore-certificate-errors lock.ts"
     }
 }
