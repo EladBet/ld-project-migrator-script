@@ -150,6 +150,49 @@ export function ldAPIRequest(apiKey: string, domain: string, path: string) {
   return req;
 }
 
+export function ldAPIDeleteRequest(apiKey: string, domain: string, path: string) {
+  const req = new Request(
+    `https://${domain}/api/v2/${path}`,
+    {
+      method: "DELETE",
+      headers: {
+        "Authorization": apiKey,
+        'User-Agent': 'launchdarkly-project-migrator-script',
+        "LD-API-Version": apiVersion,
+      },
+    },
+  );
+
+  return req;
+}
+
+export function ldAPIDeprecateFlagRequest(
+  apiKey: string,
+  domain: string,
+  projectKey: string,
+  flagKey: string,
+) {
+  const body = {
+    instructions: [{ kind: "deprecateFlag" }]
+  };
+      
+
+  const req = new Request(
+    `https://${domain}/api/v2/flags/${projectKey}/${flagKey}`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json; domain-model=launchdarkly.semanticpatch",
+        "Authorization": apiKey,
+        "LD-API-Version": apiVersion,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+
+  return req;
+}
+
 async function writeJson(filePath: string, o: any) {
   try {
     await Deno.writeTextFile(filePath, JSON.stringify(o, null, 2));

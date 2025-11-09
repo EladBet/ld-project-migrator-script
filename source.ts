@@ -3,7 +3,7 @@ import {
   ensureDir,
   ensureDirSync,
 } from "https://deno.land/std@0.149.0/fs/mod.ts";
-import { consoleLogger, delay, ldAPIRequest, writeSourceData } from "./utils.ts";
+import { consoleLogger, delay, ldAPIRequest, rateLimitRequest, writeSourceData } from "./utils.ts";
 
 interface Arguments {
   projKey: string;
@@ -40,29 +40,60 @@ await writeSourceData(projPath, "project", projData);
 // Segment Data //
 
 if (projData.environments.items.length > 0) {
-  
+
   console.log(`Found ${projData.environments.items.length} environments`);
 
   projData.environments.items.forEach(async (env: any) => {
 
     console.log(`Getting Segments for environment: ${env.key}`);
 
-    const segmentResp = await fetch(
-      ldAPIRequest(
-        inputArgs.apikey,
-        inputArgs.domain,
-        `segments/${inputArgs.projKey}/${env.key}`,
-      ),
-    );
-    if (segmentResp == null) {
-      console.log("Failed getting Segments");
-      Deno.exit(1);
-    }
-    const segmentData = await segmentResp.json();
+    const segmentPageSize: number = 20;
+    let segmentOffset: number = 0;
+    let moreSegments: boolean = true;
+    const allSegments: any[] = [];
 
-    await writeSourceData(projPath, `segment-${env.key}`, segmentData);
-    const end = Date.now() + 2_000;
-    while (Date.now() < end);
+    while (moreSegments) {
+      const segmentResp = await fetch(
+        ldAPIRequest(
+          inputArgs.apikey,
+          inputArgs.domain,
+          `segments/${inputArgs.projKey}/${env.key}?limit=${segmentPageSize}&offset=${segmentOffset}`,
+        ),
+      );
+      if (segmentResp == null) {
+        console.log("Failed getting Segments");
+        Deno.exit(1);
+      }
+      const segmentData = await segmentResp.json();
+
+      console.log(
+        `Building segment list for ${env.key}: ${
+          allSegments.length + segmentData.items.length
+        } of ${segmentData.totalCount} segments`
+      );
+
+      allSegments.push(...segmentData.items);
+
+      if (allSegments.length >= segmentData.totalCount) {
+        moreSegments = false;
+      } else {
+        segmentOffset += segmentPageSize;
+      }
+    }
+
+    console.log(
+      `Found ${allSegments.length} segments for environment: ${env.key}`
+    );
+
+    const completeSegmentData = {
+      items: allSegments,
+      totalCount: allSegments.length,
+      _links: {
+        self: { href: `/api/v2/segments/${inputArgs.projKey}/${env.key}` },
+      },
+    };
+
+    await writeSourceData(projPath, `segment-${env.key}`, completeSegmentData);
   });
 }
 
@@ -77,12 +108,13 @@ while (moreFlags) {
 
   console.log(`Building flag list: ${offset} to ${offset + pageSize}`);
 
-  const flagsResp = await fetch(
+  const flagsResp = await rateLimitRequest(
     ldAPIRequest(
       inputArgs.apikey,
       inputArgs.domain,
       path,
     ),
+    "flags",
   );
 
   if (flagsResp.status > 201) {
@@ -119,12 +151,13 @@ for (const [index, flagKey] of flags.entries()) {
 
   await delay(200);
 
-  const flagResp = await fetch(
+  const flagResp = await rateLimitRequest(
     ldAPIRequest(
       inputArgs.apikey,
       inputArgs.domain,
       `flags/${inputArgs.projKey}/${flagKey}`,
     ),
+    "flags",
   );
   if (flagResp.status > 201) {
     consoleLogger(flagResp.status, `Error getting flag '${flagKey}': ${flagResp.status}`);
